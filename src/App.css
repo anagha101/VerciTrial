@@ -708,9 +708,9 @@
   bottom: max(0.75rem, env(safe-area-inset-bottom));
   right: max(0.75rem, env(safe-area-inset-right));
   z-index: 25;
-  height: clamp(52px, 12vmin, 112px);
+  height: clamp(72px, 18vmin, 160px);
   width: auto;
-  max-width: min(58vw, 320px);
+  max-width: min(72vw, 440px);
   object-fit: contain;
   object-position: right bottom;
   pointer-events: none;
