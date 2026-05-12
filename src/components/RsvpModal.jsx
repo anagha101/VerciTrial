@@ -5,28 +5,33 @@ import {
   validateRsvpImageFile,
 } from '../lib/rsvpImages.js'
 import {
+  checkSignupContactAvailable,
+  deleteSignupByCode,
   generateEditCode,
   insertSignup,
   sanitizeEditCodeInput,
   updateSignupByCode,
 } from '../lib/signupApi.js'
 
-const STEPS = ['intro', 'item', 'contact', 'image', 'extras', 'success']
+const STEPS = ['event', 'intro', 'item', 'contact', 'image', 'extras', 'success']
+
+const EVENT_DESCRIPTION =
+  'An introductory meeting for new members to connect and set intentions for a summer of creative and career growth with verci!'
+
+const EVENT_DATE_LINE = 'Tuesday, May 19'
+const EVENT_TIME_LINE = '5:30pm–8:00pm EST'
+const EVENT_LOCATION_LINE = 'Verci Flatiron'
 
 const INTRO_COPY = (
   <>
     <p className="rsvp-lede">
-      For this gathering, we are asking everyone to bring <strong>one physical item</strong>{' '}
-      that represents what you want to get out of your <strong>Hot Verci Summer</strong>.
+      For this gathering, we are asking everyone to bring an "offering" of <strong>one physical item</strong>{' '}
+      that represents your intentions for a summer of growth and connection with Verci.
     </p>
     <p className="rsvp-body">
-      That might connect to a story you want to tell, a person you are thinking about, a goal
-      you are chasing, or anything that feels important to you right now. We will make space
-      to share what these objects mean — no performance, just sincerity.
-    </p>
-    <p className="rsvp-body muted">
-      On the next screens you will tell us what you are bringing, how to reach you, and optional
-      fun facts. You can change your answers later with the private code we give you at the end.
+      That might connect to a story you want to tell, a goal you are chasing, a reflection
+      you've been having, or anything else that feels important to you right now. The idea
+      is to share your story and what you're looking to get out of the Verci experience.
     </p>
   </>
 )
@@ -62,8 +67,9 @@ export function RsvpModal({
   const cameraInputRef = useRef(null)
   const uploadSessionIdRef = useRef('')
   const titleId = useId()
-  const [step, setStep] = useState('intro')
+  const [step, setStep] = useState('event')
   const [busy, setBusy] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [error, setError] = useState(null)
 
   const [symbolicItem, setSymbolicItem] = useState('')
@@ -85,8 +91,9 @@ export function RsvpModal({
   }, [])
 
   const resetForm = useCallback(() => {
-    setStep('intro')
+    setStep('event')
     setBusy(false)
+    setRemoving(false)
     setError(null)
     setSymbolicItem('')
     setFullName('')
@@ -140,19 +147,57 @@ export function RsvpModal({
     }
   }, [open, mode, initialRecord, resetForm, revokeBlobPreview])
 
-  const goNext = () => {
+  const goNext = useCallback(async () => {
     setError(null)
     const i = STEPS.indexOf(step)
-    if (i < STEPS.length - 1) setStep(STEPS[i + 1])
-  }
+    if (i < 0 || i >= STEPS.length - 1) return
+
+    if (step === 'contact') {
+      if (!(fullName.trim().length > 0 && validEmail(email) && phoneDigitsOk(phone))) return
+      setBusy(true)
+      try {
+        const excludeCode =
+          mode === 'edit'
+            ? sanitizeEditCodeInput(initialRecord?.edit_code ?? savedEditCode)
+            : null
+        const phoneTrim = phone.trim()
+        const dup = await checkSignupContactAvailable(
+          email.trim(),
+          phoneTrim === '' ? null : phoneTrim,
+          excludeCode && excludeCode.length === 5 ? excludeCode : null,
+        )
+        if (dup.email_taken) {
+          setError('That email is already used for an RSVP.')
+          return
+        }
+        if (dup.phone_taken) {
+          setError('That phone number is already used for an RSVP.')
+          return
+        }
+        setStep(STEPS[i + 1])
+      } catch (e) {
+        setError(e?.message ?? 'Could not verify contact. Try again.')
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+
+    setStep(STEPS[i + 1])
+  }, [step, mode, email, phone, fullName, initialRecord, savedEditCode])
 
   const goBack = () => {
     setError(null)
     const i = STEPS.indexOf(step)
-    if (i > 0) setStep(STEPS[i - 1])
+    if (i <= 0) return
+    let j = i - 1
+    while (j >= 0 && mode === 'edit' && STEPS[j] === 'event') j -= 1
+    if (j < 0) return
+    setStep(STEPS[j])
   }
 
   const canNext = (() => {
+    if (step === 'event') return true
     if (step === 'intro') return true
     if (step === 'item') return symbolicItem.trim().length > 0
     if (step === 'contact') {
@@ -227,6 +272,24 @@ export function RsvpModal({
         favorite_snack: favoriteSnack.trim() || null,
         image_object_path: imageObjectPath || null,
       }
+      const excludeCode =
+        mode === 'edit'
+          ? sanitizeEditCodeInput(initialRecord?.edit_code ?? savedEditCode)
+          : null
+      if (mode === 'edit' && (!excludeCode || excludeCode.length !== 5)) {
+        throw new Error('Missing edit code.')
+      }
+      const dup = await checkSignupContactAvailable(
+        payload.email,
+        payload.phone,
+        excludeCode && excludeCode.length === 5 ? excludeCode : null,
+      )
+      if (dup.email_taken) {
+        throw new Error('That email is already used for an RSVP.')
+      }
+      if (dup.phone_taken) {
+        throw new Error('That phone number is already used for an RSVP.')
+      }
       if (mode === 'create') {
         const edit_code = generateEditCode()
         const row = await insertSignup({ edit_code, ...payload })
@@ -246,8 +309,27 @@ export function RsvpModal({
     }
   }
 
-  const handleDialogClick = (e) => {
-    if (e.target === e.currentTarget) e.currentTarget.close()
+  const handleCancelRsvp = async () => {
+    setError(null)
+    if (mode === 'create') {
+      if (!window.confirm('Close without saving? Your RSVP will not be submitted.')) return
+      onRequestClose()
+      return
+    }
+    if (!window.confirm('Remove your RSVP entirely? This cannot be undone.')) return
+    setRemoving(true)
+    try {
+      const code = sanitizeEditCodeInput(initialRecord?.edit_code ?? savedEditCode)
+      if (code.length !== 5) throw new Error('Missing edit code.')
+      const paths = [initialRecord?.image_object_path, imageObjectPath].filter(Boolean)
+      await deleteSignupByCode(code, paths)
+      onSaved()
+      dialogRef.current?.close()
+    } catch (e) {
+      setError(e?.message ?? 'Could not cancel RSVP.')
+    } finally {
+      setRemoving(false)
+    }
   }
 
   const copyCode = async () => {
@@ -264,16 +346,18 @@ export function RsvpModal({
       className="rsvp-dialog"
       aria-labelledby={titleId}
       onClose={onRequestClose}
-      onClick={handleDialogClick}
+      onCancel={(e) => e.preventDefault()}
     >
-      <div className="rsvp-dialog-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="rsvp-dialog-panel">
         <header className="rsvp-dialog-header">
           <h2 id={titleId} className="rsvp-dialog-title">
             {step === 'success'
               ? mode === 'create'
                 ? 'You are in'
                 : 'Saved'
-              : 'RSVP'}
+              : step === 'event'
+                ? 'Hot Verci Summer'
+                : 'RSVP'}
           </h2>
           <button type="button" className="rsvp-text-btn" onClick={() => dialogRef.current?.close()}>
             Close
@@ -282,11 +366,32 @@ export function RsvpModal({
 
         {error ? <p className="rsvp-error">{error}</p> : null}
 
+        {step === 'event' ? (
+          <div className="rsvp-step">
+            <p className="rsvp-body rsvp-event-description">{EVENT_DESCRIPTION}</p>
+            <ul className="rsvp-event-meta" aria-label="When and where">
+              <li>{EVENT_DATE_LINE}</li>
+              <li>{EVENT_TIME_LINE}</li>
+              <li>{EVENT_LOCATION_LINE}</li>
+            </ul>
+            <div className="rsvp-actions">
+              <button type="button" className="rsvp-primary" onClick={() => void goNext()}>
+                RSVP
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {step === 'intro' ? (
           <div className="rsvp-step">
             {INTRO_COPY}
-            <div className="rsvp-actions">
-              <button type="button" className="rsvp-primary" onClick={goNext}>
+            <div className={mode === 'create' ? 'rsvp-actions split' : 'rsvp-actions'}>
+              {mode === 'create' ? (
+                <button type="button" className="rsvp-secondary" onClick={goBack}>
+                  Back
+                </button>
+              ) : null}
+              <button type="button" className="rsvp-primary" onClick={() => void goNext()}>
                 Next
               </button>
             </div>
@@ -304,14 +409,14 @@ export function RsvpModal({
               rows={4}
               value={symbolicItem}
               onChange={(e) => setSymbolicItem(e.target.value)}
-              placeholder="A photo, a book, a small object — whatever fits the moment."
+              placeholder="A book, a drawing, a small object — whatever fits."
             />
-            <p className="rsvp-hint">You can edit this later with your private code.</p>
+            <p className="rsvp-hint">(You can edit this later with your private code)</p>
             <div className="rsvp-actions split">
               <button type="button" className="rsvp-secondary" onClick={goBack}>
                 Back
               </button>
-              <button type="button" className="rsvp-primary" onClick={goNext} disabled={!canNext}>
+              <button type="button" className="rsvp-primary" onClick={() => void goNext()} disabled={!canNext}>
                 Next
               </button>
             </div>
@@ -355,17 +460,17 @@ export function RsvpModal({
               autoComplete="tel"
               placeholder="Skip or add a number we can reach you at"
             />
-            {!phoneDigitsOk(phone) ? (
-              <p className="rsvp-hint rsvp-hint-warn">If you add a phone number, use at least 7 digits.</p>
-            ) : (
-              <p className="rsvp-hint">Optional — include area code if you add a number.</p>
-            )}
             <div className="rsvp-actions split">
-              <button type="button" className="rsvp-secondary" onClick={goBack}>
+              <button type="button" className="rsvp-secondary" onClick={goBack} disabled={busy}>
                 Back
               </button>
-              <button type="button" className="rsvp-primary" onClick={goNext} disabled={!canNext}>
-                Next
+              <button
+                type="button"
+                className="rsvp-primary"
+                onClick={() => void goNext()}
+                disabled={!canNext || busy}
+              >
+                {busy ? 'Checking…' : 'Next'}
               </button>
             </div>
           </div>
@@ -463,18 +568,28 @@ export function RsvpModal({
               onChange={(e) => setFavoriteSnack(e.target.value)}
             />
             <p className="rsvp-hint">You can leave these blank — we will still save your RSVP.</p>
-            <div className="rsvp-actions split">
+            <div className="rsvp-actions split rsvp-extras-footer">
               <button type="button" className="rsvp-secondary" onClick={goBack}>
                 Back
               </button>
-              <button
-                type="button"
-                className="rsvp-primary"
-                onClick={handleSave}
-                disabled={!canNext || busy}
-              >
-                {busy ? 'Saving…' : 'Save'}
-              </button>
+              <div className="rsvp-extras-footer-actions">
+                <button
+                  type="button"
+                  className="rsvp-secondary rsvp-cancel-rsvp"
+                  onClick={() => void handleCancelRsvp()}
+                  disabled={busy || removing}
+                >
+                  {removing ? 'Removing…' : 'Cancel RSVP'}
+                </button>
+                <button
+                  type="button"
+                  className="rsvp-primary"
+                  onClick={() => void handleSave()}
+                  disabled={!canNext || busy || removing}
+                >
+                  {busy ? 'Saving…' : 'Save'}
+                </button>
+              </div>
             </div>
           </div>
         ) : null}

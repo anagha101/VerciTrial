@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { EditCodeBar } from './components/EditCodeBar.jsx'
 import { FloatingRsvps } from './components/FloatingRsvps.jsx'
 import { RsvpModal } from './components/RsvpModal.jsx'
+import { SummerPalmDeco } from './components/SummerPalmDeco.jsx'
 import {
   getSupabaseAnonKeyWarning,
   isSupabaseConfigured,
@@ -53,11 +54,9 @@ export default function App() {
     setModalOpen(true)
   }
 
-  const handleAuraUpdated = useCallback((id, newAuraCount) => {
-    setRsvps((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, aura_count: newAuraCount } : r)),
-    )
-  }, [])
+  const handleAuraUpdated = useCallback(() => {
+    void refreshBackdrop()
+  }, [refreshBackdrop])
 
   return (
     <div className="event-app">
@@ -79,22 +78,32 @@ export default function App() {
       ) : null}
 
       <main className="event-hero">
-        <div className="event-hero-copy">
-          <p className="event-welcome">Hot Verci Summer Loading…</p>
-          <p className="event-when">
-            Tuesday, May 19 · 5:30pm–8:00pm <span className="event-tz">EST</span>
-          </p>
-          <p className="event-where">Verci Flatiron</p>
-          {backdropError ? <p className="event-backdrop-err">{backdropError}</p> : null}
+        <SummerPalmDeco />
+        <div className="event-hero-center">
+          <button
+            type="button"
+            className="event-hero-start"
+            onClick={openCreate}
+            disabled={!configured}
+            aria-label="Begin RSVP — Hot Verci Summer"
+          >
+            <img
+              src={verciLogo}
+              alt=""
+              className="event-hero-logo"
+              width={220}
+              height={220}
+              decoding="async"
+            />
+            <span className="event-hero-tagline">Hot Verci Summer Loading…</span>
+            <span className="event-hero-cta">Press to begin.</span>
+          </button>
+          {backdropError ? (
+            <p className="event-backdrop-err event-backdrop-err--hero" role="alert">
+              {backdropError}
+            </p>
+          ) : null}
         </div>
-        <button
-          type="button"
-          className="event-rsvp-btn"
-          onClick={openCreate}
-          disabled={!configured}
-        >
-          RSVP
-        </button>
       </main>
 
       <RsvpModal
@@ -104,8 +113,6 @@ export default function App() {
         initialRecord={editRecord}
         onSaved={refreshBackdrop}
       />
-
-      <img src={verciLogo} alt="Verci" className="verci-mark" decoding="async" />
     </div>
   )
 }

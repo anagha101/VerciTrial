@@ -1,24 +1,40 @@
 :root {
-  /* Brand — Verci blue */
-  --brand: #194a93;
-  --brand-bright: #2a62c4;
-  --brand-deep: #0f2d5c;
-  --brand-glow: rgba(25, 74, 147, 0.45);
-  --brand-soft: rgba(25, 74, 147, 0.14);
+  /* Event palette (user) — yellow, white, navy, pink, mint */
+  --palette-yellow: #f4ac45;
+  --palette-white: #ffffff;
+  --palette-navy: #194a93;
+  --palette-pink: #f49097;
+  --palette-mint: #19c8c5;
 
-  --text: #4a5568;
-  --text-h: #0c1929;
-  --bg: #f4f7fc;
-  --bg-elevated: #ffffff;
-  --border: rgba(25, 74, 147, 0.14);
-  --code-bg: rgba(25, 74, 147, 0.08);
-  --accent: var(--brand);
-  --accent-bg: var(--brand-soft);
-  --accent-border: rgba(25, 74, 147, 0.35);
-  --social-bg: rgba(255, 255, 255, 0.72);
+  /* Legacy slot names used across App.css */
+  --palette-mauve: var(--palette-yellow);
+  --palette-peach: var(--palette-white);
+  --palette-dust-rose: var(--palette-pink);
+  --palette-sage: var(--palette-mint);
+
+  --brand: var(--palette-navy);
+  --brand-bright: color-mix(in srgb, var(--palette-navy) 40%, var(--palette-mint) 60%);
+  --brand-deep: color-mix(in srgb, var(--palette-navy) 72%, var(--palette-pink) 28%);
+  --brand-glow: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--palette-pink) 48%, var(--palette-mint) 52%) 42%,
+    transparent
+  );
+  --brand-soft: color-mix(in srgb, var(--palette-navy) 16%, transparent);
+
+  --text: #ffffff;
+  --text-h: #ffffff;
+  --bg: var(--palette-navy);
+  --bg-elevated: color-mix(in srgb, var(--palette-navy) 68%, var(--palette-white) 32%);
+  --border: color-mix(in srgb, var(--palette-mint) 38%, var(--palette-white) 62%);
+  --code-bg: color-mix(in srgb, var(--palette-navy) 78%, var(--palette-mint) 22%);
+  --accent: var(--palette-pink);
+  --accent-bg: color-mix(in srgb, var(--palette-pink) 24%, transparent);
+  --accent-border: color-mix(in srgb, var(--palette-mint) 42%, var(--palette-white) 58%);
+  --social-bg: color-mix(in srgb, var(--palette-navy) 76%, var(--palette-mint) 14%);
   --shadow:
-    rgba(25, 74, 147, 0.12) 0 14px 40px -12px,
-    rgba(15, 45, 92, 0.08) 0 8px 16px -8px;
+    color-mix(in srgb, var(--palette-navy) 42%, transparent) 0 16px 44px -14px,
+    color-mix(in srgb, var(--palette-pink) 18%, transparent) 0 8px 20px -10px;
 
   --sans: 'DM Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: 'DM Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -41,21 +57,26 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #94a3b8;
-    --text-h: #f1f5f9;
-    --bg: #0a101c;
-    --bg-elevated: #111b2e;
-    --border: rgba(100, 149, 237, 0.18);
-    --code-bg: rgba(25, 74, 147, 0.25);
-    --accent: #5b8def;
-    --accent-bg: rgba(25, 74, 147, 0.28);
-    --accent-border: rgba(91, 141, 239, 0.45);
-    --social-bg: rgba(17, 27, 46, 0.75);
-    --brand-bright: #6b9aed;
-    --brand-glow: rgba(91, 141, 239, 0.35);
+    --text: #ffffff;
+    --text-h: #ffffff;
+    --bg: color-mix(in srgb, var(--palette-navy) 72%, var(--palette-pink) 28%);
+    --bg-elevated: color-mix(in srgb, var(--palette-navy) 74%, var(--palette-mint) 16%);
+    --border: color-mix(in srgb, var(--palette-mint) 32%, var(--palette-white) 68%);
+    --code-bg: color-mix(in srgb, var(--palette-navy) 82%, var(--palette-pink) 18%);
+    --accent: var(--palette-mint);
+    --accent-bg: color-mix(in srgb, var(--palette-pink) 20%, transparent);
+    --accent-border: color-mix(in srgb, var(--palette-mint) 48%, var(--palette-white) 52%);
+    --social-bg: color-mix(in srgb, var(--palette-navy) 68%, var(--palette-mint) 22%);
+    --brand-bright: color-mix(in srgb, var(--palette-navy) 35%, var(--palette-mint) 65%);
+    --brand-deep: color-mix(in srgb, var(--palette-navy) 68%, var(--palette-pink) 32%);
+    --brand-glow: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--palette-mint) 45%, var(--palette-pink) 55%) 40%,
+      transparent
+    );
     --shadow:
-      rgba(0, 0, 0, 0.45) 0 20px 50px -12px,
-      rgba(25, 74, 147, 0.2) 0 0 0 1px inset;
+      color-mix(in srgb, var(--palette-navy) 50%, transparent) 0 22px 50px -14px,
+      color-mix(in srgb, var(--palette-pink) 22%, transparent) 0 0 0 1px inset;
   }
 
   #social .button-icon {
@@ -83,11 +104,12 @@ body {
   height: 100%;
   max-height: 100vh;
   max-height: 100dvh;
-  min-height: 0;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   overflow: hidden;
+  background: var(--bg);
 }
 
 h1,

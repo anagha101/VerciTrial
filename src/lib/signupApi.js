@@ -1,4 +1,5 @@
 import { getSupabase } from './supabaseClient.js'
+import { RSVP_IMAGE_BUCKET } from './rsvpImages.js'
 
 /** @returns {string} */
 export function generateEditCode() {
@@ -9,6 +10,40 @@ export function generateEditCode() {
 /** Digits only, max 5 — caller validates length === 5 before lookup/save. */
 export function sanitizeEditCodeInput(raw) {
   return String(raw ?? '').replace(/\D/g, '').slice(0, 5)
+}
+
+/** @param {{ message?: string, details?: string, code?: string }} error */
+function throwIfContactUniqueViolation(error) {
+  if (error?.code !== '23505') return
+  const hay = `${error?.message ?? ''} ${error?.details ?? ''}`
+  if (/signup_email_normalized|email_normalized/i.test(hay)) {
+    throw new Error('That email is already used for an RSVP.')
+  }
+  if (/signup_phone_digits|phone_digits/i.test(hay)) {
+    throw new Error('That phone number is already used for an RSVP.')
+  }
+}
+
+/**
+ * @param {string} email
+ * @param {string | null | undefined} phone
+ * @param {string | null} [excludeEditCode] 5-digit code for the row being edited, if any
+ * @returns {Promise<{ email_taken: boolean, phone_taken: boolean }>}
+ */
+export async function checkSignupContactAvailable(email, phone, excludeEditCode = null) {
+  const supabase = getSupabase()
+  const ex = excludeEditCode != null ? sanitizeEditCodeInput(excludeEditCode) : ''
+  const { data, error } = await supabase.rpc('check_signup_contact_available', {
+    p_email: String(email ?? '').trim(),
+    p_phone: phone != null && String(phone).trim() !== '' ? String(phone).trim() : null,
+    p_exclude_edit_code: ex.length === 5 ? ex : null,
+  })
+  if (error) throw error
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    email_taken: Boolean(row?.email_taken),
+    phone_taken: Boolean(row?.phone_taken),
+  }
 }
 
 /**
@@ -36,6 +71,7 @@ export async function insertSignup(row, maxAttempts = 12) {
       .single()
     if (!error && data) return data
     if (error?.code === '23505') {
+      throwIfContactUniqueViolation(error)
       lastErr = error
       continue
     }
@@ -136,6 +172,29 @@ export async function updateSignupByCode(editCode, fields) {
     p_favorite_snack: fields.favorite_snack,
     p_image_object_path: fields.image_object_path ?? null,
   })
+  if (error) {
+    throwIfContactUniqueViolation(error)
+    throw error
+  }
+  if (!data) throw new Error('No RSVP found for that code.')
+  return true
+}
+
+/**
+ * Deletes the signup row and attempts to remove related storage objects.
+ * @param {string} editCode
+ * @param {string[]} [imageObjectPaths] deduped object keys in `rsvp-images`
+ */
+export async function deleteSignupByCode(editCode, imageObjectPaths = []) {
+  const supabase = getSupabase()
+  const code = sanitizeEditCodeInput(editCode)
+  if (code.length !== 5) throw new Error('Enter your full 5-digit code.')
+  const paths = [...new Set(imageObjectPaths.filter(Boolean))]
+  if (paths.length > 0) {
+    const { error: storageErr } = await supabase.storage.from(RSVP_IMAGE_BUCKET).remove(paths)
+    if (storageErr) console.warn('RSVP image delete:', storageErr)
+  }
+  const { data, error } = await supabase.rpc('delete_signup_by_code', { p_edit_code: code })
   if (error) throw error
   if (!data) throw new Error('No RSVP found for that code.')
   return true

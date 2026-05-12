@@ -45,7 +45,11 @@ export async function uploadRsvpImageFile(file, sessionId) {
 /** @param {string | null | undefined} objectPath */
 export function getRsvpImagePublicUrl(objectPath) {
   if (!objectPath) return null
-  const supabase = getSupabase()
-  const { data } = supabase.storage.from(RSVP_IMAGE_BUCKET).getPublicUrl(objectPath)
-  return data?.publicUrl ?? null
+  try {
+    const supabase = getSupabase()
+    const { data } = supabase.storage.from(RSVP_IMAGE_BUCKET).getPublicUrl(objectPath)
+    return data?.publicUrl ?? null
+  } catch {
+    return null
+  }
 }

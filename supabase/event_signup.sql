@@ -38,6 +38,16 @@ alter table public.signup alter column favorite_snack drop not null;
 
 create unique index if not exists signup_edit_code_key on public.signup (edit_code);
 
+-- One RSVP per email; one per phone number (digits compared, same as UI min 7 digits).
+create unique index if not exists signup_email_normalized_key
+  on public.signup (lower(btrim(email)));
+
+create unique index if not exists signup_phone_digits_key
+  on public.signup (regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'))
+  where phone is not null
+    and btrim(phone) <> ''
+    and length(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g')) >= 7;
+
 alter table public.signup enable row level security;
 
 -- Direct inserts from the browser (anon key).
@@ -145,6 +155,67 @@ begin
 end;
 $$;
 
+-- True if another row already uses this email or phone (exclude current edit code when saving edits).
+drop function if exists public.check_signup_contact_available (text, text, text);
+
+create function public.check_signup_contact_available (
+  p_email text,
+  p_phone text,
+  p_exclude_edit_code text default null
+)
+returns table (
+  email_taken boolean,
+  phone_taken boolean
+)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select
+    exists (
+      select 1
+      from public.signup s
+      where lower(btrim(s.email)) = lower(btrim(coalesce(p_email, '')))
+        and (
+          p_exclude_edit_code is null
+          or trim(s.edit_code) is distinct from trim(p_exclude_edit_code)
+        )
+    ) as email_taken,
+    exists (
+      select 1
+      from public.signup s
+      where p_phone is not null
+        and btrim(p_phone) <> ''
+        and length(regexp_replace(btrim(p_phone), '[^0-9]', '', 'g')) >= 7
+        and regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g')
+          = regexp_replace(btrim(p_phone), '[^0-9]', '', 'g')
+        and length(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g')) >= 1
+        and (
+          p_exclude_edit_code is null
+          or trim(s.edit_code) is distinct from trim(p_exclude_edit_code)
+        )
+    ) as phone_taken;
+$$;
+
+-- Remove RSVP row by edit code (no blanket DELETE grant to anon).
+drop function if exists public.delete_signup_by_code (text);
+
+create function public.delete_signup_by_code (p_edit_code text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.signup
+  where edit_code = trim(p_edit_code)
+    and char_length(trim(p_edit_code)) = 5;
+
+  return found;
+end;
+$$;
+
 -- Public: increment aura counter (each click = +1 row count; UI shows ×10).
 drop function if exists public.bump_signup_aura (uuid);
 
@@ -173,6 +244,8 @@ grant execute on function public.get_signup_by_code (text) to anon;
 grant execute on function public.update_signup_by_code (
   text, text, text, text, text, text, text, text
 ) to anon;
+grant execute on function public.check_signup_contact_available (text, text, text) to anon;
+grant execute on function public.delete_signup_by_code (text) to anon;
 grant execute on function public.bump_signup_aura (uuid) to anon;
 
 -- ─── Storage: public RSVP photos (anon upload, public read URLs) ───
@@ -207,6 +280,12 @@ create policy "Anon update rsvp-images"
   to anon
   using (bucket_id = 'rsvp-images')
   with check (bucket_id = 'rsvp-images');
+
+drop policy if exists "Anon delete rsvp-images" on storage.objects;
+create policy "Anon delete rsvp-images"
+  on storage.objects for delete
+  to anon
+  using (bucket_id = 'rsvp-images');
 
 -- Tell PostgREST to pick up new/updated functions (helps right after first deploy).
 notify pgrst, 'reload schema';
