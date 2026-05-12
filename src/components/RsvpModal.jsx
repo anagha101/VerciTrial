@@ -19,7 +19,7 @@ const EVENT_DESCRIPTION =
   'An introductory meeting for new members to connect and set intentions for a summer of creative and career growth with verci!'
 
 const EVENT_DATE_LINE = 'Tuesday, May 19'
-const EVENT_TIME_LINE = '5:30pm–8:00pm EST'
+const EVENT_TIME_LINE = '5:30pm–8:00pm'
 const EVENT_LOCATION_LINE = 'Verci Flatiron'
 
 const INTRO_COPY = (
@@ -356,7 +356,7 @@ export function RsvpModal({
                 ? 'You are in'
                 : 'Saved'
               : step === 'event'
-                ? 'Hot Verci Summer'
+                ? 'Hot Verci Summer Loading...'
                 : 'RSVP'}
           </h2>
           <button type="button" className="rsvp-text-btn" onClick={() => dialogRef.current?.close()}>
@@ -523,7 +523,7 @@ export function RsvpModal({
                 </button>
               )}
             </div>
-            <p className="rsvp-hint">JPEG, PNG, WebP, or GIF · max 5MB</p>
+            <p className="rsvp-hint">JPEG, PNG, WebP, or GIF · max 10MB</p>
             <div className="rsvp-actions split rsvp-image-nav">
               <button type="button" className="rsvp-secondary" onClick={goBack}>
                 Back

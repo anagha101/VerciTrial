@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { bumpSignupAura } from '../lib/signupApi.js'
 import { getRsvpImagePublicUrl } from '../lib/rsvpImages.js'
 
@@ -27,85 +27,106 @@ function densityTier(n) {
   return 'dense'
 }
 
-/** Central hero card band (% of viewport) — keep float cards out of the panel footprint */
-const HERO_BAND = { l: 18, r: 82, t: 8, b: 80 }
-
-function inHeroBand(left, top) {
-  return left >= HERO_BAND.l && left <= HERO_BAND.r && top >= HERO_BAND.t && top <= HERO_BAND.b
-}
-
 /**
- * Nudge a position outside the hero band (deterministic per id + salt).
- */
-function nudgeAwayFromHero(left, top, id, salt) {
-  if (!inHeroBand(left, top)) return { left, top }
-  const q = hashUnit(id, salt)
-  if (q < 0.26) return { left: Math.max(1, left - 52), top }
-  if (q < 0.52) return { left: Math.min(86, left + 52), top }
-  if (q < 0.76) return { left, top: Math.max(4, top - 40) }
-  return { left, top: Math.min(72, top + 36) }
-}
-
-function nudgeAwayFromHeroBand(left, top, id, saltBase) {
-  let p = { left, top }
-  for (let i = 0; i < 3; i++) {
-    if (!inHeroBand(p.left, p.top)) break
-    p = nudgeAwayFromHero(p.left, p.top, id, `${saltBase}${i}`)
-  }
-  return p
-}
-
-/**
- * Sparse: organic scatter, keep away from top-right (edit) and bottom-right (logo).
- * @param {string} id
- */
-function layoutSparse(id) {
-  let left = 4 + hashUnit(id, 'x') * 72
-  let top = 12 + hashUnit(id, 'y') * 58
-  ;({ left, top } = nudgeAwayFromHeroBand(left, top, id, 'ev'))
-  const dur = 16 + hashUnit(id, 'd') * 14
-  const delay = hashUnit(id, 't') * -8
-  const scale = 0.88 + hashUnit(id, 's') * 0.12
-  return { left, top, dur, delay, scale }
-}
-
-/**
- * Medium / dense: grid slots in a safe rectangle so 5–12 cards stay on screen.
+ * Margin-only placement with explicit vertical slots so stacks never share one anchor.
+ * Right column uses inset-inline-end (CSS) so we never hit the old `min(left, …)` clamp
+ * that forced every right card to the same pixel.
+ *
+ * When ⌈n/2⌉ vertical slots get too short, switch to 4 lanes (2 on each side).
+ *
  * @param {number} index
  * @param {number} n
  * @param {string} id
- * @param {'medium' | 'dense'} tier
+ * @param {'sparse' | 'medium' | 'dense'} tier
  */
-function layoutGrid(index, n, id, tier) {
-  const cols =
-    tier === 'dense' ? 4 : n >= 8 ? 4 : Math.min(3, Math.max(2, Math.ceil(Math.sqrt(n))))
-  const rows = Math.ceil(n / cols)
-  const padL = 2.5
-  const padR = 22
-  const padT = 8.5
-  const padB = 24
-  const uw = 100 - padL - padR
+function layoutWingSlots(index, n, id, tier) {
+  const padT = 11.5
+  const padB = 25
   const uh = 100 - padT - padB
-  const col = index % cols
-  const row = Math.floor(index / cols)
-  const jx = (hashUnit(id, 'jx') - 0.5) * (tier === 'dense' ? 1.6 : 2.2)
-  const jy = (hashUnit(id, 'jy') - 0.5) * (tier === 'dense' ? 1.4 : 2.2)
-  const cellW = uw / cols
-  const cellH = uh / rows
-  const leftRaw = padL + col * cellW + 0.03 * cellW + jx
-  const topRaw = padT + row * cellH + 0.04 * cellH + jy
-  let { left, top } = nudgeAwayFromHeroBand(leftRaw, topRaw, id, 'grid')
-  const dur = 18 + hashUnit(id, 'd') * 12
-  const delay = hashUnit(id, 't') * -10
-  const scale =
-    tier === 'dense' ? 0.82 + hashUnit(id, 's') * 0.08 : 0.86 + hashUnit(id, 's') * 0.1
-  return {
-    left: Math.min(Math.max(left, 0.5), 88),
-    top: Math.min(Math.max(top, 7), 74),
-    dur,
-    delay,
-    scale,
+  const minSlotH = tier === 'dense' ? 12 : 10.8
+  const dualStacks = Math.ceil(n / 2)
+  const dualH = uh / Math.max(dualStacks, 1)
+  const useQuad = dualH < minSlotH && n > 6
+
+  let laneIndex
+  let slot
+  let slots
+  if (!useQuad) {
+    laneIndex = index % 2
+    slot = Math.floor(index / 2)
+    slots = Math.ceil(n / 2)
+  } else {
+    laneIndex = index % 4
+    slot = Math.floor(index / 4)
+    slots = Math.ceil(n / 4)
   }
+
+  const slotH = uh / Math.max(slots, 1)
+  const topMid = padT + slot * slotH + slotH * 0.5
+  const jyMax = Math.min(1.85, slotH * 0.17)
+  const jy = (hashUnit(id, 'jy') - 0.5) * jyMax
+  let top = topMid + jy
+  top = Math.min(Math.max(top, padT + 1.5), padT + uh - 1.5)
+
+  const jx = (hashUnit(id, 'jx') - 0.5) * (useQuad ? 2.6 : tier === 'dense' ? 3.4 : 4)
+
+  let anchorInlineEnd = false
+  let left = 5
+  /** % inset from inline-end (right in LTR) */
+  let inlineEnd = 6
+
+  if (!useQuad) {
+    if (laneIndex === 0) {
+      left = 5 + jx + (hashUnit(id, 'lx') - 0.5) * 2.2
+      left = Math.min(Math.max(left, 2), 23)
+    } else {
+      anchorInlineEnd = true
+      inlineEnd =
+        4.2 +
+        hashUnit(id, 'ie') * 7.5 +
+        (slot % 6) * 1.95 +
+        (hashUnit(id, 'ie2') - 0.5) * 1.4 +
+        jx * 0.35
+      inlineEnd = Math.min(Math.max(inlineEnd, 2.4), 17)
+    }
+  } else if (laneIndex === 0) {
+    left = Math.min(Math.max(3.5 + jx, 2), 12)
+  } else if (laneIndex === 1) {
+    left = Math.min(Math.max(14.5 + jx, 12.5), 24)
+  } else if (laneIndex === 2) {
+    anchorInlineEnd = true
+    inlineEnd = 6.5 + hashUnit(id, 'q2') * 5.5 + (slot % 5) * 2.05 + jx * 0.25
+    inlineEnd = Math.min(Math.max(inlineEnd, 4.5), 16)
+  } else {
+    anchorInlineEnd = true
+    inlineEnd = 2.6 + hashUnit(id, 'q3') * 4.8 + (slot % 5) * 1.75 + jx * 0.25
+    inlineEnd = Math.min(Math.max(inlineEnd, 2), 11.5)
+  }
+
+  const dur =
+    tier === 'sparse' ? 16 + hashUnit(id, 'd') * 14 : 18 + hashUnit(id, 'd') * 12
+  const delay = tier === 'sparse' ? hashUnit(id, 't') * -8 : hashUnit(id, 't') * -10
+  const scale =
+    tier === 'dense'
+      ? 0.82 + hashUnit(id, 's') * 0.08
+      : tier === 'medium'
+        ? 0.86 + hashUnit(id, 's') * 0.1
+        : 0.88 + hashUnit(id, 's') * 0.12
+
+  return { anchorInlineEnd, left, inlineEnd, top, dur, delay, scale }
+}
+
+function buildLayouts(items, tier) {
+  const n = items.length
+  return items.map((row, index) => {
+    const rowId = row?.id != null ? String(row.id) : `idx-${index}`
+    return {
+      row,
+      rowId,
+      index,
+      ...layoutWingSlots(index, n, rowId, tier),
+    }
+  })
 }
 
 /**
@@ -136,10 +157,15 @@ export function FloatingRsvps({ items, onAuraUpdated }) {
     [onAuraUpdated],
   )
 
-  if (!items?.length) return null
+  const n = items?.length ?? 0
+  const tier = n ? densityTier(n) : 'sparse'
 
-  const n = items.length
-  const tier = densityTier(n)
+  const layouts = useMemo(() => {
+    if (!items?.length) return []
+    return buildLayouts(items, tier)
+  }, [items, tier])
+
+  if (!items?.length) return null
 
   return (
     <div
@@ -147,69 +173,72 @@ export function FloatingRsvps({ items, onAuraUpdated }) {
       role="region"
       aria-label="RSVP attendees"
     >
-      {items.map((row, index) => {
-        const rowId = row?.id != null ? String(row.id) : `idx-${index}`
-        const layout =
-          tier === 'sparse' ? layoutSparse(rowId) : layoutGrid(index, n, rowId, tier)
-        const { left, top, dur, delay, scale } = layout
-        const imgUrl = row.image_object_path ? getRsvpImagePublicUrl(row.image_object_path) : null
-        const rawAura = Number(row.aura_count ?? 0)
-        const auraShown = Number.isFinite(rawAura) ? rawAura * 10 : 0
-        const displayName = row.full_name?.trim() || 'Guest'
-        const displayItem = row.symbolic_item?.trim() || '—'
-        const initial = displayName.charAt(0) || '?'
-        return (
-          <div
-            key={rowId}
-            className="float-wrap"
-            style={{
-              left: `${left}%`,
-              '--float-top': `${top}%`,
-              animationDuration: `${dur}s`,
-              animationDelay: `${delay}s`,
-            }}
-          >
-            <div className="float-person" style={{ transform: `scale(${scale})` }}>
-              <div className="float-avatar" aria-hidden="true">
-                {imgUrl ? (
-                  <img
-                    src={imgUrl}
-                    alt=""
-                    className="float-avatar-img"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : (
-                  <span className="float-avatar-letter">{initial}</span>
-                )}
-              </div>
-              <div className="float-card">
-                <p className="float-card-intro" title={`${displayName} is bringing…`}>
-                  <span className="float-card-name">{displayName}</span>
-                  <span className="float-bringing"> is bringing…</span>
-                </p>
-                <p className="float-card-item" title={displayItem}>
-                  {displayItem}
-                </p>
-                <div className="float-aura-row">
-                  <span className="float-aura-total" aria-live="polite">
-                    {auraShown.toLocaleString()} aura
-                  </span>
-                  <button
-                    type="button"
-                    className="float-aura-btn"
-                    onClick={(e) => void handleBump(e, row)}
-                    aria-label={`Give ${displayName} ten more aura`}
-                  >
-                    <SparkleIcon />
-                    <span className="float-aura-btn-label">+10</span>
-                  </button>
+      {layouts.map(
+        ({ row, rowId, anchorInlineEnd, left, inlineEnd, top, dur, delay, scale }) => {
+          const imgUrl = row.image_object_path ? getRsvpImagePublicUrl(row.image_object_path) : null
+          const rawAura = Number(row.aura_count ?? 0)
+          const auraShown = Number.isFinite(rawAura) ? rawAura * 10 : 0
+          const displayName = row.full_name?.trim() || 'Guest'
+          const displayItem = row.symbolic_item?.trim() || '—'
+          const initial = displayName.charAt(0) || '?'
+          const posStyle = anchorInlineEnd
+            ? { '--float-inline-end': `${inlineEnd}%` }
+            : { '--float-left': `${left}%` }
+          return (
+            <div
+              key={rowId}
+              className={
+                anchorInlineEnd ? 'float-wrap float-wrap--anchor-inline-end' : 'float-wrap'
+              }
+              style={{
+                ...posStyle,
+                '--float-top': `${top}%`,
+                animationDuration: `${dur}s`,
+                animationDelay: `${delay}s`,
+              }}
+            >
+              <div className="float-person" style={{ transform: `scale(${scale})` }}>
+                <div className="float-avatar" aria-hidden="true">
+                  {imgUrl ? (
+                    <img
+                      src={imgUrl}
+                      alt=""
+                      className="float-avatar-img"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <span className="float-avatar-letter">{initial}</span>
+                  )}
+                </div>
+                <div className="float-card">
+                  <p className="float-card-intro" title={`${displayName} is bringing…`}>
+                    <span className="float-card-name">{displayName}</span>
+                    <span className="float-bringing"> is bringing…</span>
+                  </p>
+                  <p className="float-card-item" title={displayItem}>
+                    {displayItem}
+                  </p>
+                  <div className="float-aura-row">
+                    <span className="float-aura-total" aria-live="polite">
+                      {auraShown.toLocaleString()} aura
+                    </span>
+                    <button
+                      type="button"
+                      className="float-aura-btn"
+                      onClick={(e) => void handleBump(e, row)}
+                      aria-label={`Give ${displayName} ten more aura`}
+                    >
+                      <SparkleIcon />
+                      <span className="float-aura-btn-label">+10</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        },
+      )}
     </div>
   )
 }

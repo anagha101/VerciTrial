@@ -28,12 +28,11 @@
 }
 
 @keyframes title-shine {
-  0%,
-  100% {
+  0% {
     background-position: 0% 50%;
   }
-  50% {
-    background-position: 100% 50%;
+  100% {
+    background-position: 200% 50%;
   }
 }
 
@@ -57,10 +56,10 @@
     transform: translate(0, 0) rotate(-1.2deg);
   }
   33% {
-    transform: translate(-14px, 12px) rotate(1deg);
+    transform: translate(-22px, 18px) rotate(1.05deg);
   }
   66% {
-    transform: translate(12px, -10px) rotate(0.8deg);
+    transform: translate(18px, -15px) rotate(0.85deg);
   }
 }
 
@@ -348,6 +347,12 @@
 .floating-layer {
   position: fixed;
   inset: 0;
+  box-sizing: border-box;
+  padding:
+    max(0.55rem, env(safe-area-inset-top))
+    max(0.6rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom))
+    max(0.6rem, env(safe-area-inset-left));
   pointer-events: none;
   z-index: 7;
   overflow: hidden;
@@ -441,23 +446,28 @@
 @keyframes floaty-subtle {
   0%,
   100% {
-    transform: translate(0, 0) rotate(-0.6deg);
+    transform: translate(0, 0) rotate(-0.65deg);
   }
   33% {
-    transform: translate(-6px, 5px) rotate(0.5deg);
+    transform: translate(-11px, 9px) rotate(0.55deg);
   }
   66% {
-    transform: translate(5px, -4px) rotate(0.4deg);
+    transform: translate(10px, -8px) rotate(0.45deg);
   }
 }
 
 .float-wrap {
   position: absolute;
-  /* Anchor is top of stack; cap so avatar + card + floaty drift stay above viewport bottom */
+  /* Anchor top-left of stack; do NOT min() left against 100%-width — that stacks every right column card. */
   --float-top: 40%;
-  top: min(
-    var(--float-top),
-    max(0px, calc(100% - 15.75rem - env(safe-area-inset-bottom, 0px) - 14px))
+  --float-left: 6%;
+  left: max(0.35rem, var(--float-left));
+  top: max(
+    calc(3.5rem + env(safe-area-inset-top, 0px)),
+    min(
+      var(--float-top),
+      max(0px, calc(100% - 15.75rem - env(safe-area-inset-bottom, 0px) - 22px))
+    )
   );
   animation-name: floaty;
   animation-timing-function: ease-in-out;
@@ -465,8 +475,31 @@
   will-change: transform;
 }
 
+.float-wrap.float-wrap--anchor-inline-end {
+  left: auto;
+  right: max(0.35rem, var(--float-inline-end, 5%));
+}
+
+.floating-density--medium .float-wrap:not(.float-wrap--anchor-inline-end),
+.floating-density--dense .float-wrap:not(.float-wrap--anchor-inline-end) {
+  left: max(0.35rem, var(--float-left));
+}
+
+.floating-density--medium .float-wrap.float-wrap--anchor-inline-end,
+.floating-density--dense .float-wrap.float-wrap--anchor-inline-end {
+  left: auto;
+  right: max(0.35rem, var(--float-inline-end, 5%));
+}
+
 .floating-density--medium .float-wrap,
 .floating-density--dense .float-wrap {
+  top: max(
+    calc(3.5rem + env(safe-area-inset-top, 0px)),
+    min(
+      var(--float-top),
+      max(0px, calc(100% - 13.35rem - env(safe-area-inset-bottom, 0px) - 18px))
+    )
+  );
   animation-name: floaty-subtle;
 }
 
@@ -1108,17 +1141,26 @@
   letter-spacing: -0.03em;
   line-height: 1.15;
   text-wrap: balance;
+  /* Wide multi-stop band so a mint / yellow / pink highlight visibly sweeps across the type */
   background: linear-gradient(
-    118deg,
-    color-mix(in srgb, #ffffff 90%, var(--palette-mint) 10%) 0%,
-    #ffffff 42%,
-    color-mix(in srgb, #ffffff 88%, var(--palette-yellow) 12%) 100%
+    100deg,
+    #ffffff 0%,
+    color-mix(in srgb, #ffffff 55%, var(--palette-mint) 45%) 22%,
+    #ffffff 38%,
+    var(--palette-yellow) 48%,
+    color-mix(in srgb, var(--palette-mint) 55%, #ffffff 45%) 54%,
+    var(--palette-pink) 60%,
+    #ffffff 72%,
+    color-mix(in srgb, #ffffff 70%, var(--palette-yellow) 30%) 88%,
+    #ffffff 100%
   );
-  background-size: 200% auto;
+  background-size: 240% 100%;
+  background-repeat: no-repeat;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: title-shine 9s ease-in-out infinite;
+  -webkit-text-fill-color: transparent;
+  animation: title-shine 5.5s linear infinite;
 }
 
 .event-hero-cta {
@@ -1130,6 +1172,37 @@
   text-decoration: underline;
   text-underline-offset: 0.2em;
   text-decoration-color: color-mix(in srgb, var(--palette-yellow) 55%, transparent);
+}
+
+@media (max-width: 640px) {
+  .event-hero {
+    gap: 0.22rem;
+    padding: 0.2rem 0.5rem 0.28rem;
+    padding-bottom: max(0.2rem, env(safe-area-inset-bottom));
+  }
+
+  .event-hero-center {
+    gap: 0.3rem;
+    max-width: min(94vw, 24rem);
+  }
+
+  .event-hero-start {
+    gap: 0.22rem;
+    padding: 0.18rem 0.35rem 0.28rem;
+  }
+
+  .event-hero-logo {
+    width: min(46vw, 10.25rem);
+    max-height: min(28vh, 10.5rem);
+  }
+
+  .event-hero-tagline {
+    font-size: clamp(0.7rem, 2.1vmin, 0.9rem);
+  }
+
+  .event-hero-cta {
+    font-size: clamp(0.62rem, 1.85vmin, 0.82rem);
+  }
 }
 
 .event-backdrop-err--hero {
@@ -1560,6 +1633,7 @@
     background: none;
     -webkit-background-clip: unset;
     background-clip: unset;
+    -webkit-text-fill-color: currentColor;
     color: var(--text-h);
   }
 

@@ -2,7 +2,7 @@ import { getSupabase } from './supabaseClient.js'
 
 export const RSVP_IMAGE_BUCKET = 'rsvp-images'
 
-const MAX_BYTES = 5 * 1024 * 1024
+const MAX_BYTES = 10 * 1024 * 1024
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
 /** @param {File} file */
@@ -11,7 +11,7 @@ export function validateRsvpImageFile(file) {
     throw new Error('Please use a JPEG, PNG, WebP, or GIF image.')
   }
   if (file.size > MAX_BYTES) {
-    throw new Error('Image must be 5MB or smaller.')
+    throw new Error(`Image must be ${MAX_BYTES / (1024 * 1024)}MB or smaller.`)
   }
 }
 

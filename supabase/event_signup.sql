@@ -254,7 +254,7 @@ values (
   'rsvp-images',
   'rsvp-images',
   true,
-  5242880,
+  10485760, -- 10 MiB
   array['image/jpeg', 'image/png', 'image/webp', 'image/gif']::text[]
 )
 on conflict (id) do update
