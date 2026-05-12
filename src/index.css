@@ -1,19 +1,28 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* Brand — Verci blue */
+  --brand: #194a93;
+  --brand-bright: #2a62c4;
+  --brand-deep: #0f2d5c;
+  --brand-glow: rgba(25, 74, 147, 0.45);
+  --brand-soft: rgba(25, 74, 147, 0.14);
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --text: #4a5568;
+  --text-h: #0c1929;
+  --bg: #f4f7fc;
+  --bg-elevated: #ffffff;
+  --border: rgba(25, 74, 147, 0.14);
+  --code-bg: rgba(25, 74, 147, 0.08);
+  --accent: var(--brand);
+  --accent-bg: var(--brand-soft);
+  --accent-border: rgba(25, 74, 147, 0.35);
+  --social-bg: rgba(255, 255, 255, 0.72);
+  --shadow:
+    rgba(25, 74, 147, 0.12) 0 14px 40px -12px,
+    rgba(15, 45, 92, 0.08) 0 8px 16px -8px;
+
+  --sans: 'DM Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: 'DM Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Consolas, monospace;
 
   font: 18px/145% var(--sans);
   letter-spacing: 0.18px;
@@ -32,17 +41,21 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
+    --text: #94a3b8;
+    --text-h: #f1f5f9;
+    --bg: #0a101c;
+    --bg-elevated: #111b2e;
+    --border: rgba(100, 149, 237, 0.18);
+    --code-bg: rgba(25, 74, 147, 0.25);
+    --accent: #5b8def;
+    --accent-bg: rgba(25, 74, 147, 0.28);
+    --accent-border: rgba(91, 141, 239, 0.45);
+    --social-bg: rgba(17, 27, 46, 0.75);
+    --brand-bright: #6b9aed;
+    --brand-glow: rgba(91, 141, 239, 0.35);
     --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+      rgba(0, 0, 0, 0.45) 0 20px 50px -12px,
+      rgba(25, 74, 147, 0.2) 0 0 0 1px inset;
   }
 
   #social .button-icon {
@@ -50,26 +63,37 @@
   }
 }
 
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
+  border-inline: none;
+  height: 100%;
+  max-height: 100vh;
+  max-height: 100dvh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-h);
 }
 
