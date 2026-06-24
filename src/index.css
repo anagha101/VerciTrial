@@ -6,6 +6,39 @@
   --brand-glow: rgba(25, 74, 147, 0.45);
   --brand-soft: rgba(25, 74, 147, 0.14);
 
+  /* Hot Verci Summer palette */
+  --palette-yellow: #f4ac45;
+  --palette-pink: #f49097;
+  --palette-mint: #19c8c5;
+  --palette-hot-pink: #ff69b4;
+
+  --gradient-summer-rainbow: linear-gradient(
+    110deg,
+    var(--palette-yellow) 0%,
+    var(--palette-hot-pink) 18%,
+    var(--palette-pink) 38%,
+    var(--palette-mint) 58%,
+    var(--brand-bright) 78%,
+    var(--brand) 100%
+  );
+
+  --gradient-summer-light: linear-gradient(
+    125deg,
+    #ffe8f7 0%,
+    #fff0c9 28%,
+    #e8fff9 55%,
+    #dcecff 82%,
+    #f5e0ff 100%
+  );
+
+  --gradient-summer-light-text: linear-gradient(
+    120deg,
+    #ff8ec4 0%,
+    #ffb84d 35%,
+    #5ee8df 68%,
+    #7eb0ff 100%
+  );
+
   --text: #4a5568;
   --text-h: #0c1929;
   --bg: #f4f7fc;

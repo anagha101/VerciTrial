@@ -1,81 +1,81 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { AuraFarmView } from './AuraFarmView.jsx'
 import {
   getRsvpImagePublicUrl,
   uploadRsvpImageFile,
   validateRsvpImageFile,
 } from '../lib/rsvpImages.js'
 import {
-  generateEditCode,
-  insertSignup,
-  sanitizeEditCodeInput,
-  updateSignupByCode,
+  createSunsetSignup,
+  fetchSignupApprovalStatus,
+  fetchSignupByRsvpCode,
+  listAuraFarmSignups,
+  notifyAdminOfRsvp,
+  sanitizeRsvpCodeInput,
+  touchSignupLastRsvp,
+  updateSignupProfileByCode,
 } from '../lib/signupApi.js'
-
-const STEPS = ['intro', 'item', 'contact', 'image', 'extras', 'success']
-
-const INTRO_COPY = (
-  <>
-    <p className="rsvp-lede">
-      For this gathering, we are asking everyone to bring <strong>one physical item</strong>{' '}
-      that represents what you want to get out of your <strong>Hot Verci Summer</strong>.
-    </p>
-    <p className="rsvp-body">
-      That might connect to a story you want to tell, a person you are thinking about, a goal
-      you are chasing, or anything that feels important to you right now. We will make space
-      to share what these objects mean — no performance, just sincerity.
-    </p>
-    <p className="rsvp-body muted">
-      On the next screens you will tell us what you are bringing, how to reach you, and optional
-      fun facts. You can change your answers later with the private code we give you at the end.
-    </p>
-  </>
-)
+import {
+  describeEpisodeLoadError,
+  fetchActiveEpisodeInfo,
+  fetchCurrentEpisodeNumber,
+} from '../lib/episodeApi.js'
 
 function validEmail(v) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
 }
 
 function phoneDigitsOk(phone) {
-  const d = phone.replace(/\D/g, '')
-  if (d.length === 0) return true
-  return d.length >= 7
+  return phone.replace(/\D/g, '').length >= 7
+}
+
+function stepTitle(step) {
+  if (step === 'intro') return '\u00a0'
+  if (step === 'gate') return 'RSVP'
+  if (step === 'new-rsvp') return 'New RSVP'
+  if (step === 'pending') return 'Pending'
+  if (step === 'profile') return 'Your profile'
+  if (step === 'aura-farm') return 'Aura Farm'
+  return 'RSVP'
 }
 
 /**
  * @param {{
  *   open: boolean
  *   onRequestClose: () => void
- *   mode: 'create' | 'edit'
- *   initialRecord: object | null
- *   onSaved: () => void
+ *   onSaved?: () => void
  * }} props
  */
-export function RsvpModal({
-  open,
-  onRequestClose,
-  mode,
-  initialRecord,
-  onSaved,
-}) {
+export function RsvpModal({ open, onRequestClose, onSaved }) {
   const dialogRef = useRef(null)
   const fileInputRef = useRef(null)
-  const cameraInputRef = useRef(null)
   const uploadSessionIdRef = useRef('')
   const titleId = useId()
+
   const [step, setStep] = useState('intro')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
-  const [symbolicItem, setSymbolicItem] = useState('')
+  const [episodeInfo, setEpisodeInfo] = useState(null)
+  const [episodeNumber, setEpisodeNumber] = useState(null)
+  const [episodeLoading, setEpisodeLoading] = useState(false)
+  const [episodeError, setEpisodeError] = useState(null)
+
+  const [codeInput, setCodeInput] = useState('')
+  const [rsvpCode, setRsvpCode] = useState('')
+
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [tenureResponse, setTenureResponse] = useState('')
-  const [favoriteSnack, setFavoriteSnack] = useState('')
-  const [savedEditCode, setSavedEditCode] = useState('')
+  const [heardAbout, setHeardAbout] = useState('')
+  const [primaryContact, setPrimaryContact] = useState(null)
+
+  const [profileMessage, setProfileMessage] = useState('')
   const [localImageFile, setLocalImageFile] = useState(null)
   const [blobPreviewUrl, setBlobPreviewUrl] = useState(null)
   const [imageObjectPath, setImageObjectPath] = useState(null)
+
+  const [auraFarmItems, setAuraFarmItems] = useState([])
 
   const revokeBlobPreview = useCallback(() => {
     setBlobPreviewUrl((prev) => {
@@ -88,22 +88,38 @@ export function RsvpModal({
     setStep('intro')
     setBusy(false)
     setError(null)
-    setSymbolicItem('')
+    setCodeInput('')
+    setRsvpCode('')
     setFullName('')
     setEmail('')
     setPhone('')
-    setTenureResponse('')
-    setFavoriteSnack('')
-    setSavedEditCode('')
+    setHeardAbout('')
+    setPrimaryContact(null)
+    setProfileMessage('')
     setLocalImageFile(null)
     revokeBlobPreview()
     setImageObjectPath(null)
+    setAuraFarmItems([])
   }, [revokeBlobPreview])
 
+  const loadSignupIntoState = useCallback(
+    (row) => {
+      setRsvpCode(row.code ?? '')
+      setFullName(row.full_name ?? '')
+      setEmail(row.email ?? '')
+      setPhone(row.phone ?? '')
+      setHeardAbout(row.heard_about ?? '')
+      setPrimaryContact(row.primary_contact ?? null)
+      setProfileMessage(row.profile_message ?? '')
+      setImageObjectPath(row.image_object_path ?? null)
+      setLocalImageFile(null)
+      revokeBlobPreview()
+    },
+    [revokeBlobPreview],
+  )
+
   useEffect(() => {
-    if (open) {
-      uploadSessionIdRef.current = crypto.randomUUID()
-    }
+    if (open) uploadSessionIdRef.current = crypto.randomUUID()
   }, [open])
 
   useEffect(() => {
@@ -119,49 +135,126 @@ export function RsvpModal({
   useEffect(() => {
     if (!open) {
       resetForm()
+      setEpisodeInfo(null)
+      setEpisodeError(null)
+      setEpisodeLoading(false)
+      setEpisodeNumber(null)
+    }
+  }, [open, resetForm])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setEpisodeLoading(true)
+    setEpisodeError(null)
+    Promise.all([fetchActiveEpisodeInfo(), fetchCurrentEpisodeNumber()])
+      .then(([info, ep]) => {
+        if (!cancelled) {
+          setEpisodeInfo(info)
+          setEpisodeNumber(ep)
+        }
+      })
+      .catch((e) => {
+        console.error(e)
+        if (!cancelled) setEpisodeError(describeEpisodeLoadError(e))
+      })
+      .finally(() => {
+        if (!cancelled) setEpisodeLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open || step !== 'pending' || !rsvpCode) return
+    const poll = async () => {
+      try {
+        const status = await fetchSignupApprovalStatus(rsvpCode)
+        if (status === 'approved') {
+          const row = await fetchSignupByRsvpCode(rsvpCode)
+          if (row) {
+            loadSignupIntoState(row)
+            setStep('profile')
+          }
+        } else if (status === 'rejected') {
+          setError('Your RSVP was not approved. Reach out if you think this is a mistake.')
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    const id = setInterval(() => void poll(), 8000)
+    void poll()
+    return () => clearInterval(id)
+  }, [open, step, rsvpCode, loadSignupIntoState])
+
+  const goToProfileOrPending = (row) => {
+    if (row.approval_status === 'approved') {
+      setStep('profile')
+    } else if (row.approval_status === 'pending') {
+      setStep('pending')
+    } else {
+      setError('This RSVP was not approved.')
+    }
+  }
+
+  const handleLookupCode = async () => {
+    setError(null)
+    const c = sanitizeRsvpCodeInput(codeInput)
+    if (c.length !== 4) {
+      setError('Enter your 4-digit code.')
       return
     }
-    if (mode === 'edit' && initialRecord) {
-      setSymbolicItem(initialRecord.symbolic_item ?? '')
-      setFullName(initialRecord.full_name ?? '')
-      setEmail(initialRecord.email ?? '')
-      setPhone(initialRecord.phone ?? '')
-      setTenureResponse(initialRecord.tenure_response ?? '')
-      setFavoriteSnack(initialRecord.favorite_snack ?? '')
-      setSavedEditCode(initialRecord.edit_code ?? '')
-      const imgPath = initialRecord.image_object_path ?? null
-      setImageObjectPath(imgPath)
-      setLocalImageFile(null)
-      revokeBlobPreview()
-      setStep('intro')
-      setError(null)
-    } else if (mode === 'create') {
-      resetForm()
+    setBusy(true)
+    try {
+      const row = await fetchSignupByRsvpCode(c)
+      if (!row) {
+        setError('No RSVP matches that code.')
+        return
+      }
+      if (episodeNumber != null) await touchSignupLastRsvp(c, episodeNumber)
+      loadSignupIntoState(row)
+      goToProfileOrPending(row)
+    } catch (e) {
+      setError(e?.message ?? 'Could not look up that code.')
+    } finally {
+      setBusy(false)
     }
-  }, [open, mode, initialRecord, resetForm, revokeBlobPreview])
-
-  const goNext = () => {
-    setError(null)
-    const i = STEPS.indexOf(step)
-    if (i < STEPS.length - 1) setStep(STEPS[i + 1])
   }
 
-  const goBack = () => {
-    setError(null)
-    const i = STEPS.indexOf(step)
-    if (i > 0) setStep(STEPS[i - 1])
-  }
+  const canSubmitNewRsvp =
+    fullName.trim().length > 0 &&
+    validEmail(email) &&
+    phoneDigitsOk(phone) &&
+    heardAbout.trim().length > 0 &&
+    (primaryContact === 'email' || primaryContact === 'phone')
 
-  const canNext = (() => {
-    if (step === 'intro') return true
-    if (step === 'item') return symbolicItem.trim().length > 0
-    if (step === 'contact') {
-      return fullName.trim().length > 0 && validEmail(email) && phoneDigitsOk(phone)
+  const handleSubmitNewRsvp = async () => {
+    if (!canSubmitNewRsvp || episodeNumber == null) return
+    setError(null)
+    setBusy(true)
+    try {
+      const created = await createSunsetSignup({
+        full_name: fullName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        heard_about: heardAbout.trim(),
+        primary_contact: primaryContact,
+        last_rsvp: episodeNumber,
+      })
+      const row = await fetchSignupByRsvpCode(created.code)
+      if (row) loadSignupIntoState(row)
+      else setRsvpCode(created.code)
+      void notifyAdminOfRsvp(created.id)
+      setStep('pending')
+      onSaved?.()
+    } catch (e) {
+      setError(e?.message ?? 'Could not submit RSVP.')
+    } finally {
+      setBusy(false)
     }
-    if (step === 'image') return true
-    if (step === 'extras') return true
-    return false
-  })()
+  }
 
   const onImageFileChosen = (e) => {
     const f = e.target.files?.[0]
@@ -181,144 +274,148 @@ export function RsvpModal({
     setLocalImageFile(f)
   }
 
-  const clearChosenImage = () => {
-    setLocalImageFile(null)
-    revokeBlobPreview()
-    setImageObjectPath(null)
-  }
-
-  const skipImageStep = () => {
+  const handleSaveProfile = async () => {
+    if (!rsvpCode) return
     setError(null)
-    setLocalImageFile(null)
-    revokeBlobPreview()
-    setStep('extras')
-  }
-
-  const nextFromImageStep = async () => {
-    setError(null)
-    if (!localImageFile) {
-      setStep('extras')
-      return
-    }
     setBusy(true)
     try {
-      const path = await uploadRsvpImageFile(localImageFile, uploadSessionIdRef.current)
-      revokeBlobPreview()
-      setLocalImageFile(null)
-      setImageObjectPath(path)
-      setStep('extras')
+      let path = imageObjectPath
+      if (localImageFile) {
+        path = await uploadRsvpImageFile(localImageFile, uploadSessionIdRef.current)
+        revokeBlobPreview()
+        setLocalImageFile(null)
+        setImageObjectPath(path)
+      }
+      await updateSignupProfileByCode(rsvpCode, {
+        profile_message: profileMessage,
+        image_object_path: path,
+      })
+      const row = await fetchSignupByRsvpCode(rsvpCode)
+      if (row) loadSignupIntoState(row)
+      onSaved?.()
     } catch (e) {
-      setError(e?.message ?? 'Upload failed. Try a smaller image or check Storage policies.')
+      setError(e?.message ?? 'Could not save profile.')
     } finally {
       setBusy(false)
     }
   }
 
-  const handleSave = async () => {
+  const openAuraFarm = async () => {
+    if (episodeNumber == null) return
     setError(null)
     setBusy(true)
     try {
-      const payload = {
-        full_name: fullName.trim(),
-        email: email.trim(),
-        phone: phone.trim() || null,
-        symbolic_item: symbolicItem.trim(),
-        tenure_response: tenureResponse.trim() || null,
-        favorite_snack: favoriteSnack.trim() || null,
-        image_object_path: imageObjectPath || null,
-      }
-      if (mode === 'create') {
-        const edit_code = generateEditCode()
-        const row = await insertSignup({ edit_code, ...payload })
-        setSavedEditCode(row.edit_code)
-      } else {
-        const code = sanitizeEditCodeInput(initialRecord?.edit_code ?? savedEditCode)
-        if (code.length !== 5) throw new Error('Missing edit code.')
-        await updateSignupByCode(code, payload)
-        setSavedEditCode(code)
-      }
-      setStep('success')
-      onSaved()
+      const rows = await listAuraFarmSignups(episodeNumber)
+      setAuraFarmItems(rows)
+      setStep('aura-farm')
     } catch (e) {
-      setError(e?.message ?? 'Something went wrong. Try again.')
+      setError(e?.message ?? 'Could not load aura farm.')
     } finally {
       setBusy(false)
     }
   }
 
-  const handleDialogClick = (e) => {
-    if (e.target === e.currentTarget) e.currentTarget.close()
-  }
+  const thumb =
+    blobPreviewUrl ?? (imageObjectPath ? getRsvpImagePublicUrl(imageObjectPath) : null)
 
-  const copyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(savedEditCode)
-    } catch {
-      setError('Could not copy automatically — select the code and copy it.')
-    }
-  }
+  const wide = step === 'aura-farm'
 
   return (
     <dialog
       ref={dialogRef}
-      className="rsvp-dialog"
+      className={`rsvp-dialog${wide ? ' rsvp-dialog--wide' : ''}`}
       aria-labelledby={titleId}
       onClose={onRequestClose}
-      onClick={handleDialogClick}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) e.currentTarget.close()
+      }}
     >
       <div className="rsvp-dialog-panel" onClick={(e) => e.stopPropagation()}>
         <header className="rsvp-dialog-header">
           <h2 id={titleId} className="rsvp-dialog-title">
-            {step === 'success'
-              ? mode === 'create'
-                ? 'You are in'
-                : 'Saved'
-              : 'RSVP'}
+            {stepTitle(step)}
           </h2>
-          <button type="button" className="rsvp-text-btn" onClick={() => dialogRef.current?.close()}>
-            Close
+          <button
+            type="button"
+            className="rsvp-close-btn"
+            onClick={() => dialogRef.current?.close()}
+            aria-label="Close"
+          >
+            ×
           </button>
         </header>
 
         {error ? <p className="rsvp-error">{error}</p> : null}
 
         {step === 'intro' ? (
-          <div className="rsvp-step">
-            {INTRO_COPY}
-            <div className="rsvp-actions">
-              <button type="button" className="rsvp-primary" onClick={goNext}>
-                Next
-              </button>
-            </div>
+          <div className="rsvp-step episode-intro-step">
+            {episodeLoading ? (
+              <p className="episode-intro-loading gradient-rainbow-text event-hero-tagline">
+                Loading…
+              </p>
+            ) : null}
+            {episodeError ? <p className="rsvp-error">{episodeError}</p> : null}
+            {episodeInfo && !episodeLoading ? (
+              <>
+                <div className="episode-intro">
+                  {episodeInfo.title ? (
+                    <h3 className="episode-intro-title gradient-rainbow-text event-hero-tagline">
+                      {episodeInfo.title}
+                    </h3>
+                  ) : null}
+                  {episodeInfo.subtitle ? (
+                    <p className="episode-intro-subtitle gradient-rainbow-text">
+                      {episodeInfo.subtitle}
+                    </p>
+                  ) : null}
+                  {episodeInfo.time ? (
+                    <p className="episode-intro-time">{episodeInfo.time}</p>
+                  ) : null}
+                  {episodeInfo.description ? (
+                    <p className="episode-intro-description">{episodeInfo.description}</p>
+                  ) : null}
+                </div>
+                <div className="rsvp-actions">
+                  <button type="button" className="episode-rsvp-btn" onClick={() => setStep('gate')}>
+                    RSVP for address
+                  </button>
+                </div>
+              </>
+            ) : null}
           </div>
         ) : null}
 
-        {step === 'item' ? (
+        {step === 'gate' ? (
           <div className="rsvp-step">
-            <label className="rsvp-label" htmlFor="symbolic-item">
-              What item are you bringing?
-            </label>
-            <textarea
-              id="symbolic-item"
-              className="rsvp-textarea"
-              rows={4}
-              value={symbolicItem}
-              onChange={(e) => setSymbolicItem(e.target.value)}
-              placeholder="A photo, a book, a small object — whatever fits the moment."
+            <p className="rsvp-lede">RSVPed before? Enter your unique code.</p>
+            <input
+              className="rsvp-input rsvp-code-input"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={4}
+              placeholder="0000"
+              value={codeInput}
+              onChange={(e) => setCodeInput(sanitizeRsvpCodeInput(e.target.value))}
             />
-            <p className="rsvp-hint">You can edit this later with your private code.</p>
-            <div className="rsvp-actions split">
-              <button type="button" className="rsvp-secondary" onClick={goBack}>
-                Back
+            <div className="rsvp-actions">
+              <button
+                type="button"
+                className="episode-rsvp-btn"
+                onClick={() => void handleLookupCode()}
+                disabled={busy || codeInput.length !== 4}
+              >
+                {busy ? 'Looking up…' : 'Continue'}
               </button>
-              <button type="button" className="rsvp-primary" onClick={goNext} disabled={!canNext}>
-                Next
+            </div>
+            <div className="rsvp-actions">
+              <button type="button" className="rsvp-secondary" onClick={() => setStep('new-rsvp')}>
+                New RSVP
               </button>
             </div>
           </div>
         ) : null}
 
-        {step === 'contact' ? (
+        {step === 'new-rsvp' ? (
           <div className="rsvp-step">
             <label className="rsvp-label" htmlFor="full-name">
               Name
@@ -337,173 +434,140 @@ export function RsvpModal({
               id="email"
               className="rsvp-input"
               type="email"
-              inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
             />
+            <label className="rsvp-check">
+              <input
+                type="checkbox"
+                checked={primaryContact === 'email'}
+                onChange={() => setPrimaryContact('email')}
+              />
+              Primary contact to receive address details
+            </label>
             <label className="rsvp-label" htmlFor="phone">
-              Phone <span className="rsvp-optional">(optional)</span>
+              Phone
             </label>
             <input
               id="phone"
               className="rsvp-input"
               type="tel"
-              inputMode="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               autoComplete="tel"
-              placeholder="Skip or add a number we can reach you at"
             />
-            {!phoneDigitsOk(phone) ? (
-              <p className="rsvp-hint rsvp-hint-warn">If you add a phone number, use at least 7 digits.</p>
-            ) : (
-              <p className="rsvp-hint">Optional — include area code if you add a number.</p>
-            )}
-            <div className="rsvp-actions split">
-              <button type="button" className="rsvp-secondary" onClick={goBack}>
-                Back
-              </button>
-              <button type="button" className="rsvp-primary" onClick={goNext} disabled={!canNext}>
-                Next
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {step === 'image' ? (
-          <div className="rsvp-step">
-            <p className="rsvp-body">
-              Optionally add a photo — it will float on the event backdrop with your name and
-              item. You can skip or change it when you edit your RSVP.
-            </p>
-            {(() => {
-              const thumb =
-                blobPreviewUrl ?? (imageObjectPath ? getRsvpImagePublicUrl(imageObjectPath) : null)
-              return thumb ? (
-                <div className="rsvp-image-preview-wrap">
-                  <img src={thumb} alt="" className="rsvp-image-preview" />
-                </div>
-              ) : (
-                <div className="rsvp-image-placeholder">No photo selected</div>
-              )
-            })()}
-            <div className="rsvp-image-actions">
+            <label className="rsvp-check">
               <input
-                ref={fileInputRef}
-                id={`${titleId}-file`}
-                className="sr-only"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={onImageFileChosen}
+                type="checkbox"
+                checked={primaryContact === 'phone'}
+                onChange={() => setPrimaryContact('phone')}
               />
-              <label htmlFor={`${titleId}-file`} className="rsvp-file-pill">
-                Library
-              </label>
-              <input
-                ref={cameraInputRef}
-                id={`${titleId}-cam`}
-                className="sr-only"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={onImageFileChosen}
-              />
-              <label htmlFor={`${titleId}-cam`} className="rsvp-file-pill">
-                Camera
-              </label>
-              {(localImageFile || imageObjectPath) && (
-                <button type="button" className="rsvp-text-btn rsvp-remove-photo" onClick={clearChosenImage}>
-                  Remove photo
-                </button>
-              )}
-            </div>
-            <p className="rsvp-hint">JPEG, PNG, WebP, or GIF · max 5MB</p>
-            <div className="rsvp-actions split rsvp-image-nav">
-              <button type="button" className="rsvp-secondary" onClick={goBack}>
-                Back
-              </button>
-              <div className="rsvp-image-nav-right">
-                <button type="button" className="rsvp-secondary" onClick={skipImageStep}>
-                  Skip
-                </button>
-                <button
-                  type="button"
-                  className="rsvp-primary"
-                  onClick={() => void nextFromImageStep()}
-                  disabled={busy}
-                >
-                  {busy ? 'Uploading…' : 'Next'}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {step === 'extras' ? (
-          <div className="rsvp-step">
-            <label className="rsvp-label" htmlFor="tenure">
-              How long have you been part of Verci?{' '}
-              <span className="rsvp-optional">(optional)</span>
+              Primary contact to receive address details
+            </label>
+            <label className="rsvp-label" htmlFor="heard-about">
+              How did you hear about Sunday Sunset Sessions?
             </label>
             <input
-              id="tenure"
+              id="heard-about"
               className="rsvp-input"
-              value={tenureResponse}
-              onChange={(e) => setTenureResponse(e.target.value)}
+              value={heardAbout}
+              onChange={(e) => setHeardAbout(e.target.value)}
             />
-            <label className="rsvp-label" htmlFor="snack">
-              What is your favorite beverage or snack?{' '}
-              <span className="rsvp-optional">(optional)</span>
-            </label>
-            <input
-              id="snack"
-              className="rsvp-input"
-              value={favoriteSnack}
-              onChange={(e) => setFavoriteSnack(e.target.value)}
-            />
-            <p className="rsvp-hint">You can leave these blank — we will still save your RSVP.</p>
             <div className="rsvp-actions split">
-              <button type="button" className="rsvp-secondary" onClick={goBack}>
+              <button type="button" className="rsvp-secondary" onClick={() => setStep('gate')}>
                 Back
               </button>
               <button
                 type="button"
-                className="rsvp-primary"
-                onClick={handleSave}
-                disabled={!canNext || busy}
+                className="episode-rsvp-btn"
+                onClick={() => void handleSubmitNewRsvp()}
+                disabled={!canSubmitNewRsvp || busy}
               >
-                {busy ? 'Saving…' : 'Save'}
+                {busy ? 'Submitting…' : 'Submit RSVP'}
               </button>
             </div>
           </div>
         ) : null}
 
-        {step === 'success' ? (
-          <div className="rsvp-step success">
-            {mode === 'create' ? (
-              <p className="rsvp-success-lede">
-                Thank you — we cannot wait to see what you bring. Copy this code and keep it
-                somewhere safe.
+        {step === 'pending' ? (
+          <div className="rsvp-step">
+            <p className="rsvp-lede">
+              Thanks{fullName ? `, ${fullName}` : ''}! Your RSVP is pending approval. We will text or
+              email you at your primary contact once confirmed.
+            </p>
+            {rsvpCode ? (
+              <p className="rsvp-hint">
+                Your code: <strong className="rsvp-code">{rsvpCode}</strong>
               </p>
+            ) : null}
+            <p className="rsvp-body muted">This page checks for approval every few seconds.</p>
+          </div>
+        ) : null}
+
+        {step === 'profile' ? (
+          <div className="rsvp-step">
+            <p className="rsvp-lede">
+              Welcome back{fullName ? `, ${fullName}` : ''}!
+              {rsvpCode ? (
+                <>
+                  {' '}
+                  Code: <strong className="rsvp-code">{rsvpCode}</strong>
+                </>
+              ) : null}
+            </p>
+            <p className="rsvp-body muted">Add a photo and a short message (not an offering).</p>
+            {thumb ? (
+              <div className="rsvp-image-preview-wrap">
+                <img src={thumb} alt="" className="rsvp-image-preview" />
+              </div>
             ) : (
-              <p className="rsvp-success-lede">Your RSVP is updated. Same code as before:</p>
+              <div className="rsvp-image-placeholder">No photo yet</div>
             )}
-            <div className="rsvp-code-row">
-              <span className="rsvp-code" aria-label="Your five digit edit code">
-                {savedEditCode}
-              </span>
-              <button type="button" className="rsvp-secondary" onClick={copyCode}>
-                Copy code
+            <input
+              ref={fileInputRef}
+              id={`${titleId}-profile-file`}
+              className="sr-only"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={onImageFileChosen}
+            />
+            <label htmlFor={`${titleId}-profile-file`} className="rsvp-file-pill">
+              {thumb ? 'Change photo' : 'Upload photo'}
+            </label>
+            <label className="rsvp-label" htmlFor="profile-message">
+              Message
+            </label>
+            <textarea
+              id="profile-message"
+              className="rsvp-textarea"
+              rows={3}
+              value={profileMessage}
+              onChange={(e) => setProfileMessage(e.target.value)}
+              placeholder="Say hi to the group…"
+            />
+            <div className="rsvp-actions split">
+              <button
+                type="button"
+                className="rsvp-secondary"
+                onClick={() => void handleSaveProfile()}
+                disabled={busy}
+              >
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" className="episode-rsvp-btn" onClick={() => void openAuraFarm()}>
+                Aura Farm
               </button>
             </div>
-            <p className="rsvp-hint strong">
-              Copy this to edit your response later — use it in the box on the top right of the
-              event page.
-            </p>
+          </div>
+        ) : null}
+
+        {step === 'aura-farm' ? (
+          <div className="rsvp-step">
+            <AuraFarmView items={auraFarmItems} />
             <div className="rsvp-actions">
-              <button type="button" className="rsvp-primary" onClick={() => dialogRef.current?.close()}>
-                Done
+              <button type="button" className="rsvp-secondary" onClick={() => setStep('profile')}>
+                Back to profile
               </button>
             </div>
           </div>

@@ -1,111 +1,156 @@
-import { useCallback, useEffect, useState } from 'react'
-import { EditCodeBar } from './components/EditCodeBar.jsx'
-import { FloatingRsvps } from './components/FloatingRsvps.jsx'
+import { useEffect, useRef, useState } from 'react'
 import { RsvpModal } from './components/RsvpModal.jsx'
-import {
-  getSupabaseAnonKeyWarning,
-  isSupabaseConfigured,
-} from './lib/supabaseClient.js'
-import { describeBackdropLoadError, listBackdropSignups } from './lib/signupApi.js'
-import verciLogo from './assets/verci-logo.png'
+import { SparkleCursor } from './components/SparkleCursor.jsx'
+import { TimelapseNav } from './components/TimelapseNav.jsx'
+import { TimelapseFooter } from './components/TimelapseFooter.jsx'
+import { isSupabaseConfigured } from './lib/supabaseClient.js'
+import { getTimelapseVideoUrl } from './lib/timelapseVideo.js'
 import './App.css'
+import './Timelapse.css'
+
+// import AppEvent from './AppEvent.jsx'
 
 export default function App() {
-  const configured = isSupabaseConfigured()
-  const anonKeyWarning = configured ? getSupabaseAnonKeyWarning() : null
-  const [rsvps, setRsvps] = useState([])
-  const [backdropError, setBackdropError] = useState(null)
+  const videoRef = useRef(null)
+  const [volume, setVolume] = useState(1)
+  const [audioUnlocked, setAudioUnlocked] = useState(false)
+  const [loadError, setLoadError] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [modalMode, setModalMode] = useState('create')
-  const [editRecord, setEditRecord] = useState(null)
 
-  const refreshBackdrop = useCallback(async () => {
-    if (!configured) return
-    try {
-      const rows = await listBackdropSignups()
-      setRsvps(rows)
-      setBackdropError(null)
-    } catch (e) {
-      console.error(e)
-      setBackdropError(describeBackdropLoadError(e))
+  const configured = isSupabaseConfigured()
+  const videoUrl = configured ? getTimelapseVideoUrl() : null
+  const showSparkles = !modalOpen
+  const videoMuted = !audioUnlocked || volume === 0
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !videoUrl) return
+
+    const play = () => {
+      if (modalOpen) return
+      void video.play().catch(() => {
+        video.muted = true
+        void video.play().catch(() => {})
+      })
     }
-  }, [configured])
+
+    play()
+    video.addEventListener('canplay', play)
+    return () => video.removeEventListener('canplay', play)
+  }, [videoUrl, modalOpen])
 
   useEffect(() => {
-    void refreshBackdrop()
-  }, [refreshBackdrop])
+    const video = videoRef.current
+    if (!video) return
+
+    if (modalOpen) {
+      video.pause()
+      return
+    }
+
+    void video.play().catch(() => {
+      video.muted = true
+      void video.play().catch(() => {})
+    })
+  }, [modalOpen])
 
   useEffect(() => {
-    if (!configured) return
-    const id = setInterval(() => void refreshBackdrop(), 28_000)
-    return () => clearInterval(id)
-  }, [configured, refreshBackdrop])
+    const video = videoRef.current
+    if (!video) return
+    video.volume = volume
+    video.muted = videoMuted
+  }, [volume, videoMuted])
 
-  const openCreate = () => {
-    setModalMode('create')
-    setEditRecord(null)
+  const unlockAudio = () => {
+    if (volume > 0) setAudioUnlocked(true)
+  }
+
+  const handleVolumeChange = (e) => {
+    const next = Number(e.target.value)
+    setVolume(next)
+    if (next > 0) setAudioUnlocked(true)
+    const video = videoRef.current
+    if (!video) return
+    video.volume = next
+    video.muted = next === 0
+    if (next > 0 && !modalOpen) void video.play().catch(() => {})
+  }
+
+  const handleBackgroundClick = () => {
+    unlockAudio()
+  }
+
+  const openRsvp = () => {
+    unlockAudio()
     setModalOpen(true)
   }
 
-  const openEdit = (row) => {
-    setModalMode('edit')
-    setEditRecord(row)
-    setModalOpen(true)
-  }
-
-  const handleAuraUpdated = useCallback((id, newAuraCount) => {
-    setRsvps((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, aura_count: newAuraCount } : r)),
+  if (!configured) {
+    return (
+      <div className="timelapse-app">
+        <p className="timelapse-error">
+          Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to{' '}
+          <code>.env</code>, then restart the dev server.
+        </p>
+      </div>
     )
-  }, [])
+  }
+
+  if (!videoUrl) {
+    return (
+      <div className="timelapse-app">
+        <p className="timelapse-error">Could not resolve timelapse video URL.</p>
+      </div>
+    )
+  }
 
   return (
-    <div className="event-app">
-      {configured ? <FloatingRsvps items={rsvps} onAuraUpdated={handleAuraUpdated} /> : null}
-
-      {configured ? <EditCodeBar onOpenEdit={openEdit} /> : null}
-
-      {!configured ? (
-        <div className="config-banner" role="status">
-          Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to{' '}
-          <code>.env</code> (see <code>.env.example</code>), then restart the dev server.
-        </div>
-      ) : null}
-
-      {anonKeyWarning ? (
-        <div className="config-banner config-banner-warn" role="alert">
-          {anonKeyWarning}
-        </div>
-      ) : null}
-
-      <main className="event-hero">
-        <div className="event-hero-copy">
-          <p className="event-welcome">Hot Verci Summer Loading…</p>
-          <p className="event-when">
-            Tuesday, May 19 · 5:30pm–8:00pm <span className="event-tz">EST</span>
-          </p>
-          <p className="event-where">Verci Flatiron</p>
-          {backdropError ? <p className="event-backdrop-err">{backdropError}</p> : null}
-        </div>
-        <button
-          type="button"
-          className="event-rsvp-btn"
-          onClick={openCreate}
-          disabled={!configured}
-        >
-          RSVP
-        </button>
-      </main>
-
-      <RsvpModal
-        open={modalOpen}
-        onRequestClose={() => setModalOpen(false)}
-        mode={modalMode}
-        initialRecord={editRecord}
-        onSaved={refreshBackdrop}
+    <div className={`timelapse-app${showSparkles ? ' timelapse-app--sparkles' : ''}`}>
+      <video
+        ref={videoRef}
+        className="timelapse-video"
+        src={videoUrl}
+        autoPlay
+        loop
+        playsInline
+        preload="auto"
+        muted
+        onError={() => setLoadError('Video failed to load. Check the videos bucket and file path.')}
       />
 
-      <img src={verciLogo} alt="Verci" className="verci-mark" decoding="async" />
+      {!modalOpen ? (
+        <button
+          type="button"
+          className="timelapse-audio-layer"
+          onClick={handleBackgroundClick}
+          aria-label="Enable audio"
+        />
+      ) : null}
+
+      <TimelapseNav onRsvpClick={openRsvp} />
+      <TimelapseFooter />
+
+      {!modalOpen ? <SparkleCursor active /> : null}
+
+      {loadError ? <p className="timelapse-error">{loadError}</p> : null}
+
+      <label className="timelapse-volume">
+        <span className="timelapse-volume-label" aria-hidden="true">
+          🔊
+        </span>
+        <span className="visually-hidden">Volume</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={volume}
+          onChange={handleVolumeChange}
+          aria-label="Volume"
+        />
+      </label>
+
+      <RsvpModal open={modalOpen} onRequestClose={() => setModalOpen(false)} />
     </div>
   )
 }
