@@ -1,57 +1,55 @@
-import { NAV_PAST_EPISODES_URL, NAV_STREAM_LIVE_URL } from '../lib/navLinks.js'
+import { NAV_STREAM_LIVE_URL } from '../lib/navLinks.js'
+import { getYoutubePlaylistWatchUrl } from '../lib/youtubePlaylist.js'
 
 /**
  * @param {{
  *   href?: string
  *   className: string
- *   onClick?: () => void
  *   children: import('react').ReactNode
  * }} props
  */
-function NavItem({ href, className, onClick, children }) {
+function NavItem({ href, className, children }) {
   if (href) {
     return (
-      <a
-        className={className}
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
+      <a className={className} href={href} target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     )
   }
 
   return (
-    <button type="button" className={className} onClick={onClick}>
+    <button type="button" className={className}>
       {children}
     </button>
   )
 }
 
-/**
- * @param {{ onRsvpClick: () => void }} props
- */
-export function TimelapseNav({ onRsvpClick }) {
+export function TimelapseNav() {
+  const pastEpisodesUrl = getYoutubePlaylistWatchUrl()
+
   return (
     <nav className="timelapse-nav" aria-label="Site">
       <NavItem
         href={NAV_STREAM_LIVE_URL || undefined}
-        className="episode-rsvp-btn timelapse-nav-btn timelapse-nav-btn--left"
+        className="glass-btn timelapse-nav-btn"
       >
         Stream Live
       </NavItem>
 
-      <button type="button" className="episode-rsvp-btn timelapse-nav-btn" onClick={onRsvpClick}>
-        RSVP
-      </button>
-
-      <NavItem
-        href={NAV_PAST_EPISODES_URL || undefined}
-        className="episode-rsvp-btn timelapse-nav-btn timelapse-nav-btn--right"
-      >
-        Past Episodes
-      </NavItem>
+      {pastEpisodesUrl ? (
+        <NavItem href={pastEpisodesUrl} className="glass-btn timelapse-nav-btn">
+          Past Episodes
+        </NavItem>
+      ) : (
+        <button
+          type="button"
+          className="glass-btn timelapse-nav-btn timelapse-nav-btn--soon timelapse-nav-btn--soon-only"
+          disabled
+        >
+          <span className="timelapse-nav-btn-label">Past Episodes</span>
+          <span className="timelapse-nav-btn-sub">(Coming Soon)</span>
+        </button>
+      )}
     </nav>
   )
 }

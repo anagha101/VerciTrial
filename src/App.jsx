@@ -1,94 +1,27 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { RsvpModal } from './components/RsvpModal.jsx'
 import { SparkleCursor } from './components/SparkleCursor.jsx'
 import { TimelapseNav } from './components/TimelapseNav.jsx'
 import { TimelapseFooter } from './components/TimelapseFooter.jsx'
+import { YouTubePlaylistPlayer } from './components/YouTubePlaylistPlayer.jsx'
+import { PublicEpisodeSection } from './components/PublicEpisodeSection.jsx'
 import { isSupabaseConfigured } from './lib/supabaseClient.js'
-import { getTimelapseVideoUrl } from './lib/timelapseVideo.js'
+import { getYoutubePlaylistId } from './lib/youtubePlaylist.js'
 import './App.css'
 import './Timelapse.css'
 
-// import AppEvent from './AppEvent.jsx'
-
 export default function App() {
-  const videoRef = useRef(null)
-  const [volume, setVolume] = useState(1)
-  const [audioUnlocked, setAudioUnlocked] = useState(false)
-  const [loadError, setLoadError] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [episodeRefreshKey, setEpisodeRefreshKey] = useState(0)
 
   const configured = isSupabaseConfigured()
-  const videoUrl = configured ? getTimelapseVideoUrl() : null
   const showSparkles = !modalOpen
-  const videoMuted = !audioUnlocked || volume === 0
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video || !videoUrl) return
-
-    const play = () => {
-      if (modalOpen) return
-      void video.play().catch(() => {
-        video.muted = true
-        void video.play().catch(() => {})
-      })
-    }
-
-    play()
-    video.addEventListener('canplay', play)
-    return () => video.removeEventListener('canplay', play)
-  }, [videoUrl, modalOpen])
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-
-    if (modalOpen) {
-      video.pause()
-      return
-    }
-
-    void video.play().catch(() => {
-      video.muted = true
-      void video.play().catch(() => {})
-    })
-  }, [modalOpen])
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-    video.volume = volume
-    video.muted = videoMuted
-  }, [volume, videoMuted])
-
-  const unlockAudio = () => {
-    if (volume > 0) setAudioUnlocked(true)
-  }
-
-  const handleVolumeChange = (e) => {
-    const next = Number(e.target.value)
-    setVolume(next)
-    if (next > 0) setAudioUnlocked(true)
-    const video = videoRef.current
-    if (!video) return
-    video.volume = next
-    video.muted = next === 0
-    if (next > 0 && !modalOpen) void video.play().catch(() => {})
-  }
-
-  const handleBackgroundClick = () => {
-    unlockAudio()
-  }
-
-  const openRsvp = () => {
-    unlockAudio()
-    setModalOpen(true)
-  }
+  const playlistId = getYoutubePlaylistId()
 
   if (!configured) {
     return (
-      <div className="timelapse-app">
-        <p className="timelapse-error">
+      <div className="sunset-app">
+        <p className="sunset-error">
           Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to{' '}
           <code>.env</code>, then restart the dev server.
         </p>
@@ -96,61 +29,48 @@ export default function App() {
     )
   }
 
-  if (!videoUrl) {
-    return (
-      <div className="timelapse-app">
-        <p className="timelapse-error">Could not resolve timelapse video URL.</p>
-      </div>
-    )
-  }
-
   return (
-    <div className={`timelapse-app${showSparkles ? ' timelapse-app--sparkles' : ''}`}>
-      <video
-        ref={videoRef}
-        className="timelapse-video"
-        src={videoUrl}
-        autoPlay
-        loop
-        playsInline
-        preload="auto"
-        muted
-        onError={() => setLoadError('Video failed to load. Check the videos bucket and file path.')}
-      />
+    <div className={`sunset-app${showSparkles ? ' sunset-app--sparkles' : ''}`}>
+      <div className="sunset-bg" aria-hidden="true">
+        <span className="sunset-bg-blob sunset-bg-blob--1" />
+        <span className="sunset-bg-blob sunset-bg-blob--2" />
+        <span className="sunset-bg-blob sunset-bg-blob--3" />
+      </div>
 
-      {!modalOpen ? (
-        <button
-          type="button"
-          className="timelapse-audio-layer"
-          onClick={handleBackgroundClick}
-          aria-label="Enable audio"
+      <TimelapseNav />
+
+      <main className="sunset-main">
+        <h1 className="sunset-title">
+          <span className="sunset-title-main">Sunday Sunset Sessions</span>
+          <span className="sunset-title-sub">with Anagha</span>
+        </h1>
+
+        <div className="sunset-video-card">
+          {playlistId ? (
+            <YouTubePlaylistPlayer playlistId={playlistId} />
+          ) : (
+            <p className="sunset-video-placeholder">
+              Set <code>VITE_YOUTUBE_PLAYLIST</code> in <code>.env</code> to play the latest
+              episode here.
+            </p>
+          )}
+        </div>
+
+        <PublicEpisodeSection
+          refreshKey={episodeRefreshKey}
+          onRsvpClick={() => setModalOpen(true)}
         />
-      ) : null}
+      </main>
 
-      <TimelapseNav onRsvpClick={openRsvp} />
       <TimelapseFooter />
 
-      {!modalOpen ? <SparkleCursor active /> : null}
+      {showSparkles ? <SparkleCursor active /> : null}
 
-      {loadError ? <p className="timelapse-error">{loadError}</p> : null}
-
-      <label className="timelapse-volume">
-        <span className="timelapse-volume-label" aria-hidden="true">
-          🔊
-        </span>
-        <span className="visually-hidden">Volume</span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={volume}
-          onChange={handleVolumeChange}
-          aria-label="Volume"
-        />
-      </label>
-
-      <RsvpModal open={modalOpen} onRequestClose={() => setModalOpen(false)} />
+      <RsvpModal
+        open={modalOpen}
+        onRequestClose={() => setModalOpen(false)}
+        onSaved={() => setEpisodeRefreshKey((current) => current + 1)}
+      />
     </div>
   )
 }

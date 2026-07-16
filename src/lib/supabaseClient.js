@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+let client = null
 
 /** Supabase anon/service keys are JWTs: header.payload.signature */
 export function isLikelyValidSupabaseAnonKey(key) {
@@ -29,5 +30,6 @@ export function getSupabase() {
       'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Copy .env.example to .env and add your project values.',
     )
   }
-  return createClient(url, anonKey)
+  if (!client) client = createClient(url, anonKey)
+  return client
 }

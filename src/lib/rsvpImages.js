@@ -42,6 +42,24 @@ export async function uploadRsvpImageFile(file, sessionId) {
   return path
 }
 
+/**
+ * Stores one replaceable profile photo per authenticated user.
+ * @param {File} file
+ * @param {string} userId
+ */
+export async function uploadRsvpProfileImage(file, userId) {
+  validateRsvpImageFile(file)
+  const ext = extFromMime(file.type)
+  const path = `${userId}/profile.${ext}`
+  const { error } = await getSupabase().storage.from(RSVP_IMAGE_BUCKET).upload(path, file, {
+    contentType: file.type,
+    upsert: true,
+    cacheControl: '3600',
+  })
+  if (error) throw error
+  return path
+}
+
 /** @param {string | null | undefined} objectPath */
 export function getRsvpImagePublicUrl(objectPath) {
   if (!objectPath) return null

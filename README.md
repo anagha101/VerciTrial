@@ -1,16 +1,19 @@
-# React + Vite
+# Sunday Sunset Sessions
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Landing page with the latest episode from a YouTube playlist, RSVP flow, and aura farm for each episode.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Copy `.env.example` to `.env` and add your Supabase URL and anon key.
+2. Set `VITE_YOUTUBE_PLAYLIST` to your episodes playlist (full URL or raw playlist ID). The playlist plays top-down in the embed, so keep the newest episode at the top.
+3. At the bottom of `supabase/schema.sql`, edit the event details and shared `rsvp_code`.
+4. In the Supabase SQL Editor, paste and run the entire `supabase/schema.sql` reset/rebuild script.
+5. Upload the flyer for the current episode number (from `current_episode`): `photos/{n}/flyer.png`.
+6. Share the RSVP code privately with invited guests. No SMS provider or Supabase Auth setup is required.
+7. `npm install` then `npm run dev`
 
-## React Compiler
+## Scripts
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `npm run dev` — local dev server
+- `npm run build` — production build
+- `npm run preview` — preview production build

@@ -1,12 +1,12 @@
 :root {
-  /* Brand — Verci blue */
+  /* Brand */
   --brand: #194a93;
   --brand-bright: #2a62c4;
   --brand-deep: #0f2d5c;
   --brand-glow: rgba(25, 74, 147, 0.45);
   --brand-soft: rgba(25, 74, 147, 0.14);
 
-  /* Hot Verci Summer palette */
+  /* Accent palette */
   --palette-yellow: #f4ac45;
   --palette-pink: #f49097;
   --palette-mint: #19c8c5;
@@ -97,14 +97,12 @@
 }
 
 html {
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100dvh;
 }
 
 #root {
@@ -113,14 +111,10 @@ body {
   margin: 0 auto;
   text-align: center;
   border-inline: none;
-  height: 100%;
-  max-height: 100vh;
-  max-height: 100dvh;
-  min-height: 0;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  overflow: hidden;
 }
 
 h1,

@@ -2,6 +2,17 @@ import { useCallback, useState } from 'react'
 import { bumpSignupAura } from '../lib/signupApi.js'
 import { getRsvpImagePublicUrl } from '../lib/rsvpImages.js'
 
+function SparkleIcon() {
+  return (
+    <svg className="aura-farm-sparkle" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M8 0l1.3 4.4L14 8l-4.7 3.6L8 16l-1.3-4.4L2 8l4.7-3.6L8 0z"
+      />
+    </svg>
+  )
+}
+
 function hashUnit(str, salt) {
   const s = `${str}:${salt}`
   let h = 0
@@ -38,16 +49,17 @@ export function AuraFarmView({ items, onAuraUpdated }) {
   )
 
   if (!items?.length) {
-    return <p className="rsvp-body muted">No one in the aura farm yet — be the first!</p>
+    return <p className="rsvp-body muted">No one has RSVPed for this episode yet — be the first!</p>
   }
 
   return (
-    <div className="aura-farm-scroll" role="region" aria-label="Aura farm">
+    <div className="aura-farm-scroll" role="region" aria-label="Who is going">
       <div className="aura-farm-canvas">
         {items.map((row, index) => {
-          const left = 8 + (index % 4) * 22 + hashUnit(row.id, 'x') * 8
-          const top = 8 + Math.floor(index / 4) * 28 + hashUnit(row.id, 'y') * 6
+          const left = 6 + (index % 5) * 18 + hashUnit(row.id, 'x') * 10
+          const top = 6 + Math.floor(index / 5) * 24 + hashUnit(row.id, 'y') * 8
           const imgUrl = row.image_object_path ? getRsvpImagePublicUrl(row.image_object_path) : null
+          const floatDelay = `${hashUnit(row.id, 'd') * 4}s`
           const rawAura = localAuras[row.id] ?? Number(row.aura_count ?? 0)
           const auraShown = Number.isFinite(rawAura) ? rawAura * 10 : 0
 
@@ -55,7 +67,11 @@ export function AuraFarmView({ items, onAuraUpdated }) {
             <div
               key={row.id}
               className="aura-farm-node"
-              style={{ left: `${left}%`, top: `${top}%` }}
+              style={{
+                left: `${left}%`,
+                top: `${top}%`,
+                animationDelay: floatDelay,
+              }}
             >
               <div className="aura-farm-avatar-wrap">
                 {imgUrl ? (
@@ -70,9 +86,17 @@ export function AuraFarmView({ items, onAuraUpdated }) {
               {row.profile_message ? (
                 <p className="aura-farm-message">{row.profile_message}</p>
               ) : null}
-              <p className="aura-farm-aura-count">{auraShown.toLocaleString()} aura</p>
-              <button type="button" className="aura-farm-bump" onClick={() => void handleBump(row)}>
-                +10 aura
+              <p className="aura-farm-aura-count" aria-live="polite">
+                {auraShown.toLocaleString()} aura
+              </p>
+              <button
+                type="button"
+                className="aura-farm-bump"
+                onClick={() => void handleBump(row)}
+                aria-label={`Give ${row.full_name} ten more aura`}
+              >
+                <SparkleIcon />
+                <span>+10 aura</span>
               </button>
             </div>
           )

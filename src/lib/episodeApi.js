@@ -80,3 +80,4 @@ export async function fetchCurrentEpisodeNumber() {
   if (!Number.isFinite(n)) throw new Error('No current episode is configured yet.')
   return n
 }
+
